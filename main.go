@@ -1,9 +1,12 @@
 package main
 
 import (
+	"bytes"
 	"encoding/binary"
+	"encoding/json"
 	"errors"
 	"fmt"
+	"log"
 	"net/http"
 	"os"
 	"time"
@@ -27,11 +30,10 @@ func main() {
 	}
 	defer ser.Close()
 
-	// http.HandleFunc("/clean", cleanHandler(ser))
-	// http.HandleFunc("/dock", dockHandler(ser))
-	// log.Fatal(http.ListenAndServe(":8080", nil))
-	wakeUp(ser)
-	// clean(ser)
+	http.HandleFunc("/clean", cleanHandler(ser))
+	http.HandleFunc("/dock", dockHandler(ser))
+	http.HandleFunc("/battery", getBatteryHandler(ser))
+	log.Fatal(http.ListenAndServe(":8080", nil))
 }
 
 func wakeUp(ser *serial.Port) {
@@ -173,4 +175,42 @@ func readSensor(ser *serial.Port, packets []SensorPacket) (map[int]int, error) {
 		i += databytes
 	}
 	return result, nil
+}
+
+type BatteryData struct {
+	Charge   int `json:"charge"`
+	Capacity int `json:"capacity"`
+}
+
+func getBatteryData(ser *serial.Port) BatteryData {
+	var batteryData BatteryData
+	chargePacket := SensorPacket{packetId: 25, dataBytes: 2}
+	capacityPacket := SensorPacket{packetId: 26, dataBytes: 2}
+	packets := []SensorPacket{chargePacket, capacityPacket}
+	result, err := readSensor(ser, packets)
+	if err != nil {
+		fmt.Println(err)
+		return batteryData
+	}
+	batteryData.Capacity = result[int(capacityPacket.packetId)]
+	batteryData.Charge = result[int(chargePacket.packetId)]
+	return batteryData
+}
+
+func getBatteryHandler(ser *serial.Port) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		wakeUp(ser)
+		batteryData := getBatteryData(ser)
+		var buf bytes.Buffer
+		enc := json.NewEncoder(&buf)
+		if err := enc.Encode(&batteryData); err != nil {
+			log.Fatal(err)
+		}
+		fmt.Println(buf.String())
+
+		_, err := fmt.Fprint(w, buf.String())
+		if err != nil {
+			return
+		}
+	}
 }
