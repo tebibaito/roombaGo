@@ -34,6 +34,8 @@ func main() {
 	http.HandleFunc("/dock", dockHandler(ser))
 	http.HandleFunc("/battery", getBatteryHandler(ser))
 	http.HandleFunc("/poweroff", powerOffHandler(ser))
+	http.HandleFunc("/pause", pauseHandler(ser))
+	http.HandleFunc("/resume", resumeHandler(ser))
 	log.Fatal(http.ListenAndServe(":8080", nil))
 }
 
@@ -90,20 +92,33 @@ func powerOff(ser *serial.Port) {
 	sendCommand(ser, command)
 }
 
+func safe(ser *serial.Port) {
+	command := []byte{131}
+	sendCommand(ser, command)
+}
+
+func pause(ser *serial.Port) {
+	command := []byte{150, 0}
+	sendCommand(ser, command)
+}
+
+func resume(ser *serial.Port) {
+	command := []byte{150, 1}
+	sendCommand(ser, command)
+}
+
 func powerOffHandler(ser *serial.Port) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		powerOff(ser)
+		fmt.Fprint(w, "power off")
 	}
 }
 
 func cleanHandler(ser *serial.Port) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		if isOn := getIsOn(ser); isOn == true {
-			powerOff(ser)
-			time.Sleep(100 * time.Millisecond)
-		}
 		wakeUp(ser)
-		time.Sleep(100 * time.Millisecond)
+		safe(ser)
+		time.Sleep(500 * time.Millisecond)
 		clean(ser)
 		fmt.Fprint(w, "start cleaning!")
 	}
@@ -111,14 +126,25 @@ func cleanHandler(ser *serial.Port) http.HandlerFunc {
 
 func dockHandler(ser *serial.Port) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		if isOn := getIsOn(ser); isOn == true {
-			powerOff(ser)
-			time.Sleep(1000 * time.Millisecond)
-		}
 		wakeUp(ser)
-		time.Sleep(100 * time.Millisecond)
+		safe(ser)
+		time.Sleep(500 * time.Millisecond)
 		dock(ser)
 		fmt.Fprint(w, "back to homebase!")
+	}
+}
+
+func pauseHandler(ser *serial.Port) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		pause(ser)
+		fmt.Fprint(w, "pause")
+	}
+}
+
+func resumeHandler(ser *serial.Port) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		resume(ser)
+		fmt.Fprint(w, "resume")
 	}
 }
 
